@@ -1,0 +1,13 @@
+# Windows-файлы сборки храним и отдаем с CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+src/**/*.txt text eol=crlf
+src/*.txt text eol=crlf
+*.sh text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.bin binary
+*.exe binary
+*.dll binary
+*.sys binary

@@ -1,0 +1,95 @@
+# =====================================================================
+#  Стратегии zapret2 (winws2) для Cloudflare One Client (WARP)
+# =====================================================================
+#  Формат строки:  ID | proto | описание | аргументы профиля
+#
+#  proto:
+#    T - TCP (MASQUE h2-only, API). Тестер сам добавит префикс:
+#        --filter-l3=ipv4 --filter-tcp=443 --ipset=lists\ipset-warp4.txt --out-range=-d10
+#    U - UDP (MASQUE HTTP/3, WireGuard). Префикс:
+#        --filter-l3=ipv4 --filter-udp=443,500,1701,2408,4443,4500,8095,8443 --ipset=lists\ipset-warp4.txt --out-range=-n10
+#    X - профиль целиком как есть (без префикса), можно с --new
+#
+#  Блобы (объявлены тестером):
+#    tls_max       files\tls_clienthello_max_ru.bin       (из Flowseal, SNI max.ru)
+#    tls_google    files\tls_clienthello_www_google_com.bin
+#    tls_vk        files\tls_clienthello_vk_com.bin
+#    tls_gosuslugi files\tls_clienthello_gosuslugi_ru.bin
+#    stun2         files\stun2.bin                          (из Flowseal)
+#    quic_google   files\quic_initial_www_google_com.bin
+#    game_udp      files\ACTIVE_GAME_UDP.bin                (из Flowseal)
+#    fake_default_tls / fake_default_http / fake_default_quic - встроены в winws2
+#
+#  Соответствие фулингов zapret1 -> zapret2:
+#    badseq -> tcp_seq=-10000:tcp_ack=-66000     ts     -> tcp_ts=-600000
+#    md5sig -> tcp_md5                           autottl -> ip_autottl=-2,3-20
+#    --dpi-desync-repeats=N -> repeats=N         --dpi-desync-fake-tls=! -> blob=fake_default_tls
+# =====================================================================
+
+# ---------------------------------------------------------------------
+#  Результаты на одном провайдере (Москва, 13-14.10.2026, MASQUE HTTP/2):
+#    PASS: T02 T04 T22 T28 T40 T41 T43 T47 T49 T51
+#          (общее у всех: первым пакетом идет НЕ-TLS фейк - stun2 или HTTP,
+#           фулинг ts или badseq)
+#    FAIL: все с фейковым TLS ClientHello первым (T01 T03 T05-T12 T15 T16 T20
+#          T21 T23-T26 T29-T31 T50), md5sig (T27 T42), autottl (T44),
+#          нулевые/мусорные фейки (T45 T46 T48), OOB (T13), ipfrag (T14),
+#          badsum-фейки и чистая нарезка без фейков (T17-T19)
+#  У другого провайдера картина может отличаться - гоняйте RUN-TEST.cmd.
+# ---------------------------------------------------------------------
+
+# --- TCP: MASQUE h2-only + API --------------------------------------------------
+T01 | T | seqovl max.ru, без фейков и фулинга | --payload=tls_client_hello --lua-desync=multisplit:pos=1:seqovl=#tls_max:seqovl_pattern=tls_max
+T02 | T | SIMPLE FAKE ALT2: фейки stun2+max.ru, ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --lua-desync=fake:blob=tls_max:tcp_ts=-600000:repeats=6
+T03 | T | FAKE TLS AUTO: badseq x11 + multidisorder 1,midsld | --payload=tls_client_hello --lua-desync=fake:blob=0x00000000:tcp_seq=-10000:tcp_ack=-66000:repeats=11 --lua-desync=fake:blob=fake_default_tls:tls_mod=rnd,dupsid,sni=www.google.com:tcp_seq=-10000:tcp_ack=-66000:repeats=11 --lua-desync=multidisorder:pos=1,midsld
+T04 | T | COMBO: T02 + T03 в одном профиле | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --lua-desync=fake:blob=tls_max:tcp_ts=-600000:repeats=6 --lua-desync=fake:blob=0x00000000:tcp_seq=-10000:tcp_ack=-66000:repeats=11 --lua-desync=fake:blob=fake_default_tls:tls_mod=rnd,dupsid,sni=www.google.com:tcp_seq=-10000:tcp_ack=-66000:repeats=11 --lua-desync=multidisorder:pos=1,midsld
+T05 | T | ALT11: фейк max.ru ts x6 + seqovl google | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:tcp_ts=-600000:repeats=6 --lua-desync=multisplit:pos=1:seqovl=#tls_google:seqovl_pattern=tls_google
+T06 | T | фейк-копия с SNI max.ru ts + multisplit 1,midsld seqovl | --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tls_mod=rnd,dupsid,sni=max.ru:tcp_ts=-600000:repeats=6 --lua-desync=multisplit:pos=1,midsld:seqovl=#tls_max:seqovl_pattern=tls_max
+T07 | T | md5sig фейк max.ru x6 + multisplit 1,midsld | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:tcp_md5:repeats=6 --lua-desync=multisplit:pos=1,midsld
+T08 | T | autottl фейк max.ru x6 + multidisorder 1,midsld | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:ip_autottl=-2,3-20:repeats=6 --lua-desync=multidisorder:pos=1,midsld
+T09 | T | ttl=4 фейк max.ru x6 + multisplit 1,midsld | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:ip_ttl=4:repeats=6 --lua-desync=multisplit:pos=1,midsld
+T10 | T | hostfakesplit: фейковый хост *.max.ru, ts | --payload=tls_client_hello --lua-desync=hostfakesplit:host=max.ru:tcp_ts=-600000
+T11 | T | fakeddisorder midsld, паттерн max.ru, ts | --payload=tls_client_hello --lua-desync=fakeddisorder:pos=midsld:pattern=tls_max:tcp_ts=-600000
+T12 | T | syndata max.ru в SYN + multisplit 1,midsld | --lua-desync=syndata:blob=tls_max --payload=tls_client_hello --lua-desync=multisplit:pos=1,midsld
+T13 | T | OOB-байт в начале потока | --in-range=-s1 --lua-desync=oob --in-range=x
+T14 | T | IP-фрагментация ClientHello | --payload=tls_client_hello --lua-desync=send:ipfrag:ipfrag_pos_tcp=32 --lua-desync=drop
+T15 | T | фейк vk.com seq+1000000 x6 + multisplit 1,midsld | --payload=tls_client_hello --lua-desync=fake:blob=tls_vk:tcp_seq=1000000:repeats=6 --lua-desync=multisplit:pos=1,midsld
+T16 | T | фейк gosuslugi ack-66000+ts_up x6 + multidisorder midsld | --payload=tls_client_hello --lua-desync=fake:blob=tls_gosuslugi:tcp_ack=-66000:tcp_ts_up:repeats=6 --lua-desync=multidisorder:pos=midsld
+T17 | T | badsum фейк max.ru x6 + multisplit 1,midsld | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:badsum:repeats=6 --lua-desync=multisplit:pos=1,midsld
+T18 | T | только multisplit 1,midsld | --payload=tls_client_hello --lua-desync=multisplit:pos=1,midsld
+T19 | T | только multidisorder 1,midsld | --payload=tls_client_hello --lua-desync=multidisorder:pos=1,midsld
+T20 | T | padencap: реальный CH в padding фейка max.ru, ts + seqovl | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:tls_mod=rnd,dupsid,padencap:tcp_ts=-600000:repeats=6 --lua-desync=multisplit:pos=1:seqovl=#tls_max:seqovl_pattern=tls_max
+
+# --- UDP: MASQUE HTTP/3 (QUIC) и WireGuard -------------------------------------
+U01 | U | фейк QUIC google x11 | --payload=quic_initial --lua-desync=fake:blob=quic_google:repeats=11
+U02 | U | фейк ACTIVE_GAME_UDP x10 перед первыми 2 пакетами | --out-range=-n2 --lua-desync=fake:blob=game_udp:repeats=10:payload=all
+U03 | U | WireGuard: случайные фейки через repeater (preset2_wireguard) | --payload=wireguard_initiation --lua-desync=repeater:instances=2:repeats=3 --lua-desync=luaexec:code=desync.rnd=brandom(math.random(32,64)) --lua-desync=fake:blob=rnd
+U04 | U | IP-фрагментация QUIC initial | --payload=quic_initial --lua-desync=send:ipfrag:ipfrag_pos_udp=16 --lua-desync=drop
+U05 | U | фейк QUIC google x6 + фрагментация | --payload=quic_initial --lua-desync=fake:blob=quic_google:repeats=6 --lua-desync=send:ipfrag:ipfrag_pos_udp=16 --lua-desync=drop
+
+# --- Без нарезки ClientHello (по итогам 001: любая сегментация -> TIMEOUT) ------
+T21 | T | только фейк max.ru, ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:tcp_ts=-600000:repeats=6
+T22 | T | только фейк stun2, ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6
+T23 | T | только фейк max.ru, md5sig x6 | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:tcp_md5:repeats=6
+T24 | T | только фейк max.ru, badseq x6 | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:tcp_seq=-10000:tcp_ack=-66000:repeats=6
+T25 | T | фейк-копия реального CH с SNI max.ru, ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tls_mod=rnd,dupsid,sni=max.ru:tcp_ts=-600000:repeats=6
+T26 | T | только фейк max.ru, autottl x6 | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:ip_autottl=-2,3-20:repeats=6
+T27 | T | T02 + md5sig на тех же фейках | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:tcp_md5:repeats=6 --lua-desync=fake:blob=tls_max:tcp_ts=-600000:tcp_md5:repeats=6
+T28 | T | T02 облегченный: repeats=3 | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=3 --lua-desync=fake:blob=tls_max:tcp_ts=-600000:repeats=3
+T29 | T | только syndata max.ru (без нарезки) | --lua-desync=syndata:blob=tls_max
+T30 | T | фейк vk.com ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=tls_vk:tcp_ts=-600000:repeats=6
+T31 | T | фейк max.ru ts x6 + фейк google badseq x6 (две разные фулинг-схемы) | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:tcp_ts=-600000:repeats=6 --lua-desync=fake:blob=tls_google:tcp_seq=-10000:tcp_ack=-66000:repeats=6
+
+# --- Не-TLS фейк первым (по итогам 002: работает только stun2 + ts) -------------
+T40 | T | фейк stun2 ts x1 | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=1
+T41 | T | фейк stun2 ts x3 | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=3
+T42 | T | фейк stun2 md5sig x6 | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_md5:repeats=6
+T43 | T | фейк stun2 badseq x6 | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_seq=-10000:tcp_ack=-66000:repeats=6
+T44 | T | фейк stun2 autottl x6 | --payload=tls_client_hello --lua-desync=fake:blob=stun2:ip_autottl=-2,3-20:repeats=6
+T45 | T | фейк 4 нулевых байта ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=0x00000000:tcp_ts=-600000:repeats=6
+T46 | T | фейк 256 нулей ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000:tcp_ts=-600000:repeats=6
+T47 | T | фейк HTTP-запрос (iana.org) ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=fake_default_http:tcp_ts=-600000:repeats=6
+T48 | T | фейк ACTIVE_GAME_UDP ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=game_udp:tcp_ts=-600000:repeats=6
+T49 | T | фейк stun2 ts x6 + multisplit 1,midsld | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --lua-desync=multisplit:pos=1,midsld
+T50 | T | фейк max.ru ts x6, потом stun2 ts x6 (обратный порядок T02) | --payload=tls_client_hello --lua-desync=fake:blob=tls_max:tcp_ts=-600000:repeats=6 --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6
+T51 | T | фейк stun2 ts x6 + фейк 4 нуля ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --lua-desync=fake:blob=0x00000000:tcp_ts=-600000:repeats=6

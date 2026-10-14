@@ -1,0 +1,55 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build package
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            ver="${GITHUB_REF_NAME}"
+          else
+            ver="dev-${GITHUB_SHA::7}"
+          fi
+          bash build/build.sh "$ver"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zapret2-warp-r6-fix
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zip=$(ls dist/*.zip)
+          {
+            echo "Готовая сборка: zapret2 (bol-van) + стратегия для Cloudflare One Client (WARP)."
+            echo
+            echo "Скачайте zip ниже, распакуйте в папку без кириллицы и пробелов и запустите zapret2-WARP.cmd. Подробности в README."
+            echo
+            echo '```'
+            sed -n '1,4p' dist/zapret2-warp-r6-fix/VERSION.txt | tr -d '\r'
+            echo
+            cat dist/*.sha256
+            echo '```'
+          } > notes.md
+          gh release create "${GITHUB_REF_NAME}" "$zip" dist/*.sha256 \
+            --title "${GITHUB_REF_NAME}" --notes-file notes.md
