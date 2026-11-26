@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 rem MAIN: STUN fake before ClientHello, fooling ts (needs TCP timestamps)
-rem zapret2 (bol-van) v1.0.5 + Cloudflare One Client (MASQUE h2-only). Do not run together with Flowseal winws.exe. https://github.com/bol-van/zapret2
+rem zapret2 (bol-van) v1.0.5 + Cloudflare One Client (MASQUE h2-only). Do not run together with Flowseal winws.exe.
 cd /d "%~dp0"
 net session >nul 2>&1
 if errorlevel 1 (
@@ -17,17 +17,18 @@ set "BIN=%~dp0bin\"
 set "LUA=%~dp0lua\"
 set "FILES=%~dp0files\"
 set "LISTS=%~dp0lists\"
+for %%I in ("%~dp0..\lists") do set "FL=%%~fI\"
 
 start "zapret2: WARP" /min "%BIN%winws2.exe" --wf-tcp-out=80,443,2053,2083,2087,2096,8443 --wf-udp-out=443,19294-19344,50000-50100 ^
 --lua-init=@"%LUA%zapret-lib.lua" --lua-init=@"%LUA%zapret-antidpi.lua" ^
 --blob=stun2:@"%FILES%stun2.bin" --blob=quic_google:@"%FILES%quic_initial_www_google_com.bin" --blob=discord_udp:@"%FILES%ACTIVE_DISCORD_UDP.bin" ^
 --filter-l3=ipv4 --filter-tcp=443 --ipset="%LISTS%ipset-warp4.txt" --out-range=-d10 --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --new ^
---filter-tcp=443 --hostlist="%LISTS%list-google.txt" --out-range=-d10 --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --new ^
---filter-tcp=80,443 --hostlist="%LISTS%list-general.txt" --hostlist="%LISTS%list-general-user.txt" --hostlist-exclude="%LISTS%list-exclude.txt" --hostlist-exclude="%LISTS%list-exclude-user.txt" --out-range=-d10 --payload=tls_client_hello,http_req --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --new ^
+--filter-tcp=443 --hostlist="%FL%list-google.txt" --out-range=-d10 --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --new ^
+--filter-tcp=80,443 --hostlist="%FL%list-general.txt" --hostlist="%FL%list-general-user.txt" --hostlist-exclude="%FL%list-exclude.txt" --hostlist-exclude="%FL%list-exclude-user.txt" --out-range=-d10 --payload=tls_client_hello,http_req --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --new ^
 --filter-tcp=2053,2083,2087,2096,8443 --hostlist-domains=discord.media --out-range=-d10 --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --new ^
---filter-udp=443 --hostlist="%LISTS%list-google.txt" --hostlist="%LISTS%list-general.txt" --hostlist="%LISTS%list-general-user.txt" --hostlist-exclude="%LISTS%list-exclude.txt" --hostlist-exclude="%LISTS%list-exclude-user.txt" --payload=quic_initial --lua-desync=fake:blob=quic_google:repeats=6 --new ^
+--filter-udp=443 --hostlist="%FL%list-google.txt" --hostlist="%FL%list-general.txt" --hostlist="%FL%list-general-user.txt" --hostlist-exclude="%FL%list-exclude.txt" --hostlist-exclude="%FL%list-exclude-user.txt" --payload=quic_initial --lua-desync=fake:blob=quic_google:repeats=6 --new ^
 --filter-udp=19294-19344,50000-50100 --filter-l7=discord,stun --payload=stun,discord_ip_discovery --lua-desync=fake:blob=discord_udp:repeats=6 --new ^
---filter-tcp=80,443,8443 --ipset="%LISTS%ipset-all.txt" --ipset-exclude="%LISTS%ipset-exclude.txt" --ipset-exclude="%LISTS%ipset-exclude-user.txt" --hostlist-exclude="%LISTS%list-exclude.txt" --hostlist-exclude="%LISTS%list-exclude-user.txt" --out-range=-d10 --payload=tls_client_hello,http_req --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6
+--filter-tcp=80,443,8443 --ipset="%FL%ipset-all.txt" --ipset-exclude="%FL%ipset-exclude.txt" --ipset-exclude="%FL%ipset-exclude-user.txt" --hostlist-exclude="%FL%list-exclude.txt" --hostlist-exclude="%FL%list-exclude-user.txt" --out-range=-d10 --payload=tls_client_hello,http_req --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6
 
 echo zapret2 started (minimized window "zapret2: WARP"). Now connect Cloudflare One Client.
 timeout /t 5 >nul

@@ -26,18 +26,6 @@
 #    --dpi-desync-repeats=N -> repeats=N         --dpi-desync-fake-tls=! -> blob=fake_default_tls
 # =====================================================================
 
-# ---------------------------------------------------------------------
-#  Результаты на одном провайдере (Москва, 13-14.10.2026, MASQUE HTTP/2):
-#    PASS: T02 T04 T22 T28 T40 T41 T43 T47 T49 T51
-#          (общее у всех: первым пакетом идет НЕ-TLS фейк - stun2 или HTTP,
-#           фулинг ts или badseq)
-#    FAIL: все с фейковым TLS ClientHello первым (T01 T03 T05-T12 T15 T16 T20
-#          T21 T23-T26 T29-T31 T50), md5sig (T27 T42), autottl (T44),
-#          нулевые/мусорные фейки (T45 T46 T48), OOB (T13), ipfrag (T14),
-#          badsum-фейки и чистая нарезка без фейков (T17-T19)
-#  У другого провайдера картина может отличаться - гоняйте RUN-TEST.cmd.
-# ---------------------------------------------------------------------
-
 # --- TCP: MASQUE h2-only + API --------------------------------------------------
 T01 | T | seqovl max.ru, без фейков и фулинга | --payload=tls_client_hello --lua-desync=multisplit:pos=1:seqovl=#tls_max:seqovl_pattern=tls_max
 T02 | T | SIMPLE FAKE ALT2: фейки stun2+max.ru, ts x6 | --payload=tls_client_hello --lua-desync=fake:blob=stun2:tcp_ts=-600000:repeats=6 --lua-desync=fake:blob=tls_max:tcp_ts=-600000:repeats=6

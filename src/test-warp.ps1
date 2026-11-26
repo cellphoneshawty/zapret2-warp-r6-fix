@@ -61,7 +61,6 @@ $BlobMap = [ordered]@{
   stun2         = 'stun2.bin'
   quic_google   = 'quic_initial_www_google_com.bin'
   game_udp      = 'ACTIVE_GAME_UDP.bin'
-  discord_udp   = 'ACTIVE_DISCORD_UDP.bin'
 }
 
 # ---------------------------------------------------------------------------
@@ -171,11 +170,7 @@ function Format-Download($c, [int64]$Expected) {
 }
 
 function Expand-Ph([string]$s) {
-  # {FLOWSEAL_LISTS}: списки Flowseal. В готовой сборке они лежат в lists\ рядом со скриптом,
-  # в старой раскладке (zapret2 внутри папки Flowseal) - в ..\lists
-  $fl = $Lists
-  if (-not (Test-Path (Join-Path $Lists 'list-general.txt'))) { $fl = Join-Path (Split-Path $Root -Parent) 'lists' }
-  return $s.Replace('{LISTS}', $Lists).Replace('{FILES}', $Files).Replace('{ROOT}', $Root).Replace('{FLOWSEAL_LISTS}', $fl)
+  return $s.Replace('{LISTS}', $Lists).Replace('{FILES}', $Files).Replace('{ROOT}', $Root).Replace('{FLOWSEAL_LISTS}', (Join-Path (Split-Path $Root -Parent) 'lists'))
 }
 
 function Get-BaseArgs([string]$Wf) {
